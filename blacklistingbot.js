@@ -55,6 +55,7 @@ botClient.on('connected', (address, port) => {
   writeToDebugFile(connectMessage); // Schrijf verbindingsmelding naar bestand
 });
 
+// Voeg een event handler toe voor chatberichten
 botClient.on('message', (channel, tags, message, self) => {
   if (!self || (self && checkBotMessages)) { // Controleer of het bericht niet van de bot zelf is, tenzij geconfigureerd om te controleren
     const username = tags.username;
@@ -63,19 +64,43 @@ botClient.on('message', (channel, tags, message, self) => {
     if (isMessageFromBroadcaster(tags)) {
       // Doe hier niets als het bericht afkomstig is van de broadcaster zelf
     } else {
-      // Controleer de gebruiker in de database en stuur melding naar broadcaster indien nodig
-      checkUserInDatabase(username)
-        .then((isUserInDatabase) => {
-          if (isUserInDatabase) {
-            // Stuur een melding naar de broadcaster als de gebruiker in de database staat
-            const messageToBroadcaster = `${username} staat in de database!`;
-            writeToDebugFile(messageToBroadcaster); // Schrijf debug-bericht naar bestand
-            botClient.say(channel, messageToBroadcaster);
-          }
-        })
-        .catch((error) => {
-          console.error('Databasefout:', error.message);
-        });
+      // Controleer of het bericht een commando is om een gebruikersnaam te controleren
+      if (message.toLowerCase() === '!checkusername') {
+        console.log('Commando gedetecteerd.'); // Voeg een debug-bericht toe
+
+        // Voer de gebruikersnaam in die je wilt controleren, bijvoorbeeld "!checkusername codeskullz"
+        const commandParts = message.split(' ');
+        if (commandParts.length === 2) {
+          const targetUsername = commandParts[1];
+
+          // Controleer de gebruiker in de database en stuur een bericht naar de chat
+          checkUserInDatabase(targetUsername)
+            .then((isUserInDatabase) => {
+              const messageToChat = isUserInDatabase
+                ? `${targetUsername} staat in de database!`
+                : `${targetUsername} is niet gevonden in de database.`;
+
+              // Stuur het bericht naar de chat
+              botClient.say(channel, messageToChat);
+
+              // Voeg een debug-bericht toe aan het logbestand
+              writeToDebugFile(messageToChat);
+            })
+            .catch((error) => {
+              console.error('Databasefout:', error.message);
+              writeToDebugFile(`Databasefout: ${error.message}`); // Voeg een debug-bericht toe aan het logbestand
+            });
+        } else {
+          // Ongeldig gebruik van het commando, geef instructies terug aan de chat
+          const usageMessage = 'Gebruik: !checkusername <gebruikersnaam>';
+          botClient.say(channel, usageMessage);
+
+          // Voeg een debug-bericht toe aan het logbestand
+          writeToDebugFile(usageMessage);
+        }
+      } else {
+        // Rest van je berichtverwerkingslogica blijft hier ongewijzigd
+      }
     }
   }
 });
