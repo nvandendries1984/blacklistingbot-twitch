@@ -2,6 +2,7 @@ require('dotenv').config(); // Laad configuratie uit het .env-bestand
 
 const tmi = require('tmi.js');
 const mysql = require('mysql2');
+const fs = require('fs'); // Importeer de fs-module voor bestandsbewerking
 
 // Twitch-botconfiguratie
 const botConfig = {
@@ -26,19 +27,36 @@ const dbTable = process.env.DB_TABLE;
 // Haal de gebruikersnaam van de broadcaster op uit het .env-bestand
 const broadcasterUsername = process.env.BROADCASTER_USERNAME;
 
-const botClient = new tmi.Client(botConfig);
+// Haal de waarde van DEBUG_MODE op uit het .env-bestand
+const debugMode = process.env.DEBUG_MODE === 'true';
 
-botClient.on('connected', (address, port) => {
-  console.log(`Bot is verbonden op ${address}:${port}`);
-});
+const botClient = new tmi.Client(botConfig);
 
 // Functie om te controleren of het bericht afkomstig is van de broadcaster
 function isMessageFromBroadcaster(tags) {
   return tags.username === broadcasterUsername;
 }
 
+// Debugging-informatie naar bestand schrijven
+function writeToDebugFile(message) {
+  if (debugMode) {
+    fs.appendFile('bot.log', message + '\n', (err) => {
+      if (err) {
+        console.error('Fout bij schrijven naar debug-bestand:', err);
+      }
+    });
+  }
+}
+
+// Melding wanneer de bot is verbonden
+botClient.on('connected', (address, port) => {
+  const connectMessage = `Bot is verbonden op ${address}:${port}`;
+  console.log(connectMessage); // Optioneel: melding ook naar de console
+  writeToDebugFile(connectMessage); // Schrijf verbindingsmelding naar bestand
+});
+
 botClient.on('message', (channel, tags, message, self) => {
-  if (!self) { // Controleer of het bericht niet van de bot zelf is
+  if (!self || (self && checkBotMessages)) { // Controleer of het bericht niet van de bot zelf is, tenzij geconfigureerd om te controleren
     const username = tags.username;
 
     // Controleer of het bericht afkomstig is van de broadcaster
@@ -50,7 +68,9 @@ botClient.on('message', (channel, tags, message, self) => {
         .then((isUserInDatabase) => {
           if (isUserInDatabase) {
             // Stuur een melding naar de broadcaster als de gebruiker in de database staat
-            botClient.say(channel, `${username} staat in de database!`);
+            const messageToBroadcaster = `${username} staat in de database!`;
+            writeToDebugFile(messageToBroadcaster); // Schrijf debug-bericht naar bestand
+            botClient.say(channel, messageToBroadcaster);
           }
         })
         .catch((error) => {
@@ -72,9 +92,22 @@ function checkUserInDatabase(username) {
 
     connection.query(query, [username], (error, results) => {
       if (error) {
+        console.error('Databasefout bij het uitvoeren van de query:', error); // Voeg dit toe voor debugging
         reject(error);
       } else {
-        resolve(results.length > 0);
+        const isUserInDatabase = results.length > 0;
+
+        if (isUserInDatabase) {
+          const logMessage = `${username} is gevonden in de database!`;
+          console.log(logMessage); // Voeg dit toe voor debugging
+          writeToDebugFile(logMessage); // Schrijf debug-bericht naar bestand
+        } else {
+          const logMessage = `${username} is niet gevonden in de database!`;
+          console.log(logMessage); // Voeg dit toe voor debugging
+          writeToDebugFile(logMessage); // Schrijf debug-bericht naar bestand
+        }
+
+        resolve(isUserInDatabase);
       }
 
       connection.end();
