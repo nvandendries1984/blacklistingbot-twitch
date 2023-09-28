@@ -60,3 +60,6 @@ De functie `checkUserInDatabase(username)` wordt gebruikt om te controleren of e
 Tenslotte wordt de botclient verbonden met Twitch-chat met behulp van de `connect`-methode.
 
 Dit is een algemene uitleg van de code. Raadpleeg de code en opmerkingen in de code voor meer specifieke details en implementatiedetails.
+
+## Development team
+* Niels van den Dries - Niels@nvandendries.nl
