@@ -40,7 +40,8 @@ function isMessageFromBroadcaster(tags) {
 // Debugging-informatie naar bestand schrijven
 function writeToDebugFile(message) {
   if (debugMode) { // Controleren of DEBUG_MODE true is in .env
-    fs.appendFile('bot.log', message + '\n', (err) => {
+    // zo zou debug moeten schrijven naar bot.log
+    fs.appendFile('bot.log', `${message}\n`, (err) => {
       if (err) {
         console.error('Fout bij schrijven naar debug-bestand:', err);
       }
