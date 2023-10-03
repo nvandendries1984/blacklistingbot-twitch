@@ -63,8 +63,6 @@ botClient.on('message', (channel, tags, message, self) => {
 
     // Controleer of het bericht afkomstig is van de broadcaster
     if (isMessageFromBroadcaster(tags)) {
-      // Doe hier niets als het bericht afkomstig is van de broadcaster zelf
-    } else {
       // Controleer of het bericht een commando is om een gebruikersnaam te controleren
       if (message.toLowerCase() === '!checkusername') {
         console.log('Commando gedetecteerd.'); // Voeg een debug-bericht toe
