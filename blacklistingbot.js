@@ -41,7 +41,8 @@ function isMessageFromBroadcaster(tags) {
 // testen en fixen
 function writeToDebugFile(message) {
   if (debugMode) { // Controleren of DEBUG_MODE true is in .env
-    fs.appendFile('bot.log', message + '\n', (err) => {
+    // zo zou debug moeten schrijven naar bot.log
+    fs.appendFile('bot.log', `${message}\n`, (err) => {
       if (err) {
         console.error('Fout bij schrijven naar debug-bestand:', err);
       }
@@ -63,8 +64,6 @@ botClient.on('message', (channel, tags, message, self) => {
 
     // Controleer of het bericht afkomstig is van de broadcaster
     if (isMessageFromBroadcaster(tags)) {
-      // Doe hier niets als het bericht afkomstig is van de broadcaster zelf
-    } else {
       // Controleer of het bericht een commando is om een gebruikersnaam te controleren
       if (message.toLowerCase() === '!checkusername') {
         console.log('Commando gedetecteerd.'); // Voeg een debug-bericht toe
