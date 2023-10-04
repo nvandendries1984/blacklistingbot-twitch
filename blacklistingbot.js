@@ -2,7 +2,19 @@ require('dotenv').config(); // Laad configuratie uit het .env-bestand
 
 const tmi = require('tmi.js');
 const mysql = require('mysql2');
+const winston = require('winston'); // Voeg Winston toe
 const fs = require('fs'); // Importeer de fs-module voor bestandsbewerking
+
+// Configureer Winston om naar het logbestand te schrijven
+const logger = winston.createLogger({
+  level: 'info', // Stel het logniveau in (kan 'info', 'warn', 'error', etc. zijn)
+  format: winston.format.simple(), // Gebruik een eenvoudig logformaat
+  transports: [
+    new winston.transports.File({ filename: 'bot.log' }), // Schrijf naar het logbestand
+    // Verwijder het console-transport om geen logberichten naar de console te schrijven
+    // new winston.transports.Console(),
+  ],
+});
 
 // Twitch-botconfiguratie
 const botConfig = {
@@ -10,7 +22,7 @@ const botConfig = {
     username: process.env.BOT_USERNAME,
     password: process.env.OAUTH_TOKEN,
   },
-  channels: [process.env.CHANNEL_NAME],
+  channels: [], // Laat de kanalen leeg om de bot in alle kanalen toe te staan
 };
 
 // Databaseconfiguratie
@@ -24,86 +36,66 @@ const databaseConfig = {
 // Haal de tabelnaam op uit het .env-bestand
 const dbTable = process.env.DB_TABLE;
 
-// Haal de gebruikersnaam van de broadcaster op uit het .env-bestand
-const broadcasterUsername = process.env.BROADCASTER_USERNAME;
-
 // Haal de waarde van DEBUG_MODE op uit het .env-bestand
 const debugMode = process.env.DEBUG_MODE === 'true';
 
 const botClient = new tmi.Client(botConfig);
 
-// Functie om te controleren of het bericht afkomstig is van de broadcaster
-function isMessageFromBroadcaster(tags) {
-  return tags.username === broadcasterUsername;
+// Functie om te controleren of het bericht afkomstig is van de bot zelf
+function isMessageFromBot(tags) {
+  return tags.username === botConfig.identity.username;
 }
 
-// Debugging-informatie naar bestand schrijven
-// testen en fixen
+// Functie om logberichten te schrijven met Winston
 function writeToDebugFile(message) {
-  if (debugMode) { // Controleren of DEBUG_MODE true is in .env
-    // zo zou debug moeten schrijven naar bot.log
-    fs.appendFile('bot.log', `${message}\n`, (err) => {
-      if (err) {
-        console.error('Fout bij schrijven naar debug-bestand:', err);
-      }
-    });
-  }
+  logger.info(message); // Schrijf een logbericht naar het logbestand
 }
 
 // Melding wanneer de bot is verbonden
 botClient.on('connected', (address, port) => {
   const connectMessage = `Bot is verbonden op ${address}:${port}`;
-  console.log(connectMessage); // Optioneel: melding ook naar de console
-  writeToDebugFile(connectMessage); // Schrijf verbindingsmelding naar bestand
+  console.log(connectMessage);
+  writeToDebugFile(connectMessage);
 });
 
 // Voeg een event handler toe voor chatberichten
+try {
 botClient.on('message', (channel, tags, message, self) => {
-  if (!self || (self && checkBotMessages)) { // Controleer of het bericht niet van de bot zelf is, tenzij geconfigureerd om te controleren
+  if (!self) {
     const username = tags.username;
 
-    // Controleer of het bericht afkomstig is van de broadcaster
-    if (isMessageFromBroadcaster(tags)) {
-      // Controleer of het bericht een commando is om een gebruikersnaam te controleren
-      if (message.toLowerCase() === '!checkusername') {
-        console.log('Commando gedetecteerd.'); // Voeg een debug-bericht toe
+    // Controleer of het bericht een commando is om een gebruikersnaam te controleren
+    if (message.toLowerCase() === '!checkusername') {
+      console.log('Commando gedetecteerd.');
 
-        // Voer de gebruikersnaam in die je wilt controleren, bijvoorbeeld "!checkusername codeskullz"
-        const commandParts = message.split(' ');
-        if (commandParts.length === 2) {
-          const targetUsername = commandParts[1];
+      const commandParts = message.split(' ');
+      if (commandParts.length === 2) {
+        const targetUsername = commandParts[1];
 
-          // Controleer de gebruiker in de database en stuur een bericht naar de chat
-          checkUserInDatabase(targetUsername)
-            .then((isUserInDatabase) => {
-              const messageToChat = isUserInDatabase
-                ? `${targetUsername} staat in de database!`
-                : `${targetUsername} is niet gevonden in de database.`;
+        checkUserInDatabase(targetUsername)
+          .then((isUserInDatabase) => {
+            const messageToChat = isUserInDatabase
+              ? `${targetUsername} staat in de database!`
+              : `${targetUsername} is niet gevonden in de database.`;
 
-              // Stuur het bericht naar de chat
-              botClient.say(channel, messageToChat);
-
-              // Voeg een debug-bericht toe aan het logbestand
-              writeToDebugFile(messageToChat);
-            })
-            .catch((error) => {
-              console.error('Databasefout:', error.message);
-              writeToDebugFile(`Databasefout: ${error.message}`); // Voeg een debug-bericht toe aan het logbestand
-            });
-        } else {
-          // Ongeldig gebruik van het commando, geef instructies terug aan de chat
-          const usageMessage = 'Gebruik: !checkusername <gebruikersnaam>';
-          botClient.say(channel, usageMessage);
-
-          // Voeg een debug-bericht toe aan het logbestand
-          writeToDebugFile(usageMessage);
-        }
+            botClient.say(channel, messageToChat);
+            writeToDebugFile(messageToChat);
+          })
+          .catch((error) => {
+            console.error('Databasefout:', error.message);
+            writeToDebugFile(`Databasefout: ${error.message}`);
+          });
       } else {
-        // Rest van je berichtverwerkingslogica blijft hier ongewijzigd
+        const usageMessage = 'Gebruik: !checkusername <gebruikersnaam>';
+        botClient.say(channel, usageMessage);
+        writeToDebugFile(usageMessage);
       }
     }
   }
 });
+} catch (error) {
+  console.error('Fout opgetreden:', error);
+}
 
 // Functie om gebruiker in de database te controleren
 function checkUserInDatabase(username) {
@@ -112,24 +104,24 @@ function checkUserInDatabase(username) {
 
     connection.connect();
 
-    // Gebruik de waarde van dbTable om de tabelnaam in de query in te stellen
     const query = `SELECT * FROM ${dbTable} WHERE username = ?`;
 
     connection.query(query, [username], (error, results) => {
       if (error) {
-        console.error('Databasefout bij het uitvoeren van de query:', error); // Voeg dit toe voor debugging
+        console.error('Databasefout bij het uitvoeren van de query:', error);
+        writeToDebugFile(`Databasefout: ${error.message}`);
         reject(error);
       } else {
         const isUserInDatabase = results.length > 0;
 
         if (isUserInDatabase) {
           const logMessage = `${username} is gevonden in de database!`;
-          console.log(logMessage); // Voeg dit toe voor debugging
-          writeToDebugFile(logMessage); // Schrijf debug-bericht naar bestand
+          console.log(logMessage);
+          writeToDebugFile(logMessage);
         } else {
           const logMessage = `${username} is niet gevonden in de database!`;
-          console.log(logMessage); // Voeg dit toe voor debugging
-          writeToDebugFile(logMessage); // Schrijf debug-bericht naar bestand
+          console.log(logMessage);
+          writeToDebugFile(logMessage);
         }
 
         resolve(isUserInDatabase);
