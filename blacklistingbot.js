@@ -4,6 +4,16 @@ const tmi = require('tmi.js');
 const mysql = require('mysql2');
 const winston = require('winston'); // Voeg Winston toe
 const fs = require('fs'); // Importeer de fs-module voor bestandsbewerking
+// Twitch-botconfiguratie
+const botConfig = {
+  options: { debug: true },
+  identity: {
+    username: process.env.BOT_USERNAME,
+    password: process.env.OAUTH_TOKEN,
+  },
+  channels: [], // Laat de kanalen leeg om de bot in alle kanalen toe te staan
+};
+const botClient = new tmi.Client(botConfig);
 
 // Configureer Winston om naar het logbestand te schrijven
 const logger = winston.createLogger({
@@ -15,15 +25,6 @@ const logger = winston.createLogger({
     // new winston.transports.Console(),
   ],
 });
-
-// Twitch-botconfiguratie
-const botConfig = {
-  identity: {
-    username: process.env.BOT_USERNAME,
-    password: process.env.OAUTH_TOKEN,
-  },
-  channels: [], // Laat de kanalen leeg om de bot in alle kanalen toe te staan
-};
 
 // Databaseconfiguratie
 const databaseConfig = {
@@ -38,8 +39,6 @@ const dbTable = process.env.DB_TABLE;
 
 // Haal de waarde van DEBUG_MODE op uit het .env-bestand
 const debugMode = process.env.DEBUG_MODE === 'true';
-
-const botClient = new tmi.Client(botConfig);
 
 // Functie om te controleren of het bericht afkomstig is van de bot zelf
 function isMessageFromBot(tags) {
@@ -57,6 +56,55 @@ botClient.on('connected', (address, port) => {
   console.log(connectMessage);
   writeToDebugFile(connectMessage);
 });
+
+// Voeg een event handler toe voor chatberichten
+botClient.on('message', (channel, tags, message, self) => {
+  if (!self) {
+    const username = tags.username;
+    const botUsername = botConfig.identity.username.toLowerCase(); // Gebruikersnaam van de bot in kleine letters
+
+    // Controleer of het bericht aan de bot is gericht
+    if (message.toLowerCase().includes(`@${botUsername}`)) {
+      console.log('Bericht aan de bot gedetecteerd.');
+
+      // Controleer of het bericht het "!checkusername" commando bevat
+      if (message.toLowerCase().includes('!checkusername')) {
+        const commandParts = message.split(' ');
+        if (commandParts.length === 2) {
+          const targetUsername = commandParts[1];
+
+          // Voeg de bot toe aan het kanaal
+          botClient.join(channel)
+            .then(() => {
+              // Controleer de gebruiker in de database en reageer op het bericht
+              checkUserInDatabase(targetUsername)
+                .then((isUserInDatabase) => {
+                  const messageToChat = isUserInDatabase
+                    ? `${targetUsername} staat in de database!`
+                    : `${targetUsername} is niet gevonden in de database.`;
+
+                  botClient.say(channel, messageToChat);
+                  writeToDebugFile(messageToChat);
+                })
+                .catch((error) => {
+                  console.error('Databasefout:', error.message);
+                  writeToDebugFile(`Databasefout: ${error.message}`);
+                });
+            })
+            .catch((error) => {
+              console.error('Fout bij het toevoegen aan het kanaal:', error);
+              writeToDebugFile(`Fout bij het toevoegen aan het kanaal: ${error.message}`);
+            });
+        } else {
+          const usageMessage = `Gebruik: @${botUsername} !checkusername <gebruikersnaam>`;
+          botClient.say(channel, usageMessage);
+          writeToDebugFile(usageMessage);
+        }
+      }
+    }
+  }
+});
+
 
 // Voeg een event handler toe voor chatberichten
 try {
